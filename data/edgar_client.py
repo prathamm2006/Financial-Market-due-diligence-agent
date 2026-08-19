@@ -23,7 +23,13 @@ def get_cik_for_ticker(ticker: str) -> str:
     for entry in data.values():
         if entry["ticker"] == ticker:
             return str(entry["cik_str"]).zfill(10)
-    raise ValueError(f"Ticker '{ticker}' not found in SEC ticker map.")
+    raise ValueError(
+        f"Ticker '{ticker}' was not found in SEC's active filer list. "
+        "This usually means: (1) it's not a US-listed company SEC currently "
+        "tracks, (2) it was delisted/deregistered, or (3) it's a typo. "
+        "Try a well-known ticker like AAPL, MSFT, TGT, or JPM to confirm the "
+        "pipeline itself is working."
+    )
 
 
 def get_company_facts(cik: str) -> dict:
@@ -44,8 +50,15 @@ def extract_key_metrics(company_facts: dict, years: int = 3) -> dict:
     Pulls the most recent N annual values for a curated list of key metrics
     from the raw companyfacts blob. Returns a clean dict ready for the LLM
     or for direct charting — no need to hand the whole XBRL blob to an LLM.
+
+    Supports both US-domestic annual filers (Form 10-K) and foreign private
+    issuers (Form 20-F, e.g. Toyota, Sony, Alibaba) — without this, any
+    non-US-domestic ticker would silently return empty metrics even when
+    its CIK/filings are found, which reads as a confusing bug rather than
+    a coverage limit.
     """
     us_gaap = company_facts.get("facts", {}).get("us-gaap", {})
+    ANNUAL_FORMS = {"10-K", "20-F"}
     wanted = {
         "Revenues": "revenue",
         "RevenueFromContractWithCustomerExcludingAssessedTax": "revenue",
@@ -62,10 +75,10 @@ def extract_key_metrics(company_facts: dict, years: int = 3) -> dict:
         if gaap_tag not in us_gaap:
             continue
         usd_facts = us_gaap[gaap_tag].get("units", {}).get("USD", [])
-        # Keep only annual (10-K, full-year) data points, most recent first
+        # Keep only annual (full fiscal year) data points, most recent first
         annual = [
             f for f in usd_facts
-            if f.get("form") == "10-K" and f.get("fp") == "FY"
+            if f.get("form") in ANNUAL_FORMS and f.get("fp") == "FY"
         ]
         annual.sort(key=lambda f: f["end"], reverse=True)
         seen_years = set()
@@ -91,6 +104,14 @@ def get_company_profile(ticker: str, years: int = 3) -> dict:
     facts = get_company_facts(cik)
     metrics = extract_key_metrics(facts, years=years)
     company_name = facts.get("entityName", ticker)
+    if not metrics:
+        raise ValueError(
+            f"Found '{company_name}' in SEC EDGAR (CIK {cik}), but no usable "
+            "10-K/20-F annual financial data was available in the standard "
+            "XBRL tags this tool reads. This can happen for holding "
+            "companies, recent IPOs with limited filing history, or filers "
+            "using non-standard GAAP tags."
+        )
     return {"ticker": ticker.upper(), "cik": cik, "company_name": company_name, "metrics": metrics}
 
 

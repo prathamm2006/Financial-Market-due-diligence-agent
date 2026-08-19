@@ -8,7 +8,8 @@ get one at https://aistudio.google.com/apikey)
 """
 import os
 import json
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 
 def _get_secret(key: str) -> str | None:
@@ -24,16 +25,36 @@ def _get_secret(key: str) -> str | None:
         return None
 
 
-genai.configure(api_key=_get_secret("GOOGLE_API_KEY"))
 MODEL = "gemini-2.5-flash"
+_client = None
+
+
+def _get_client():
+    """Lazily creates the Gemini client so importing this module never
+    crashes just because the API key isn't set yet — only calling an
+    agent function requires it."""
+    global _client
+    if _client is None:
+        api_key = _get_secret("GOOGLE_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "GOOGLE_API_KEY is not set. Get a free key at "
+                "https://aistudio.google.com/apikey and export it, e.g.\n"
+                '  export GOOGLE_API_KEY="your-key-here"'
+            )
+        _client = genai.Client(api_key=api_key)
+    return _client
 
 
 def _call_gemini_json(system: str, user: str) -> dict:
     """Helper: call Gemini, force JSON-only output via response_mime_type, parse it safely."""
-    model = genai.GenerativeModel(model_name=MODEL, system_instruction=system)
-    resp = model.generate_content(
-        user,
-        generation_config={"response_mime_type": "application/json"},
+    resp = _get_client().models.generate_content(
+        model=MODEL,
+        contents=user,
+        config=types.GenerateContentConfig(
+            system_instruction=system,
+            response_mime_type="application/json",
+        ),
     )
     text = resp.text.strip()
     try:
@@ -75,22 +96,34 @@ Return JSON in exactly this shape:
 
 
 def briefing_agent(company_name: str, ticker: str, metrics: dict,
-                    competitor_summary: dict, risk_output: dict) -> dict:
+                    competitor_summary: dict, risk_output: dict,
+                    forecast_output: dict) -> dict:
     """
-    The synthesis agent — takes everything the other agents produced and
-    writes the executive-ready brief. This is the deliverable a human
-    actually reads.
+    The synthesis agent — takes everything the other agents produced
+    (including COMPUTED forecasts, not LLM-guessed ones) and writes the
+    executive-ready brief. The LLM's job here is interpretation and
+    narrative, not arithmetic — the numbers it's given are already correct.
     """
     system = (
-        "You are a senior consulting analyst writing a due-diligence brief "
-        "for a partner who has 90 seconds to read it. Be direct, quantified, "
-        "and explicit about uncertainty. Respond with ONLY valid JSON."
+        "You are a senior equity research analyst with 15+ years of experience "
+        "writing due-diligence briefs for investment committee partners. "
+        "You write with the precision and directness of a real analyst note — "
+        "specific numbers, specific percentages, explicit reasoning for your "
+        "call. You never write generic filler like 'the company shows strong "
+        "fundamentals' without citing the exact figure that supports it. "
+        "You are given ALREADY-COMPUTED forecast figures (CAGR, trend "
+        "projections) — use them, cite them, but never invent numbers not "
+        "given to you. Respond with ONLY valid JSON."
     )
     user = f"""
 Company: {company_name} ({ticker})
 
-Financial metrics:
+Historical financial metrics (most recent year first):
 {json.dumps(metrics, indent=2)}
+
+Computed forward-looking forecasts (CAGR + linear trend projections,
+already calculated — cite these directly, do not recompute):
+{json.dumps(forecast_output, indent=2)}
 
 Competitor benchmark:
 {json.dumps(competitor_summary, indent=2)}
@@ -100,12 +133,13 @@ Risk analysis:
 
 Return JSON in exactly this shape:
 {{
-  "headline": "one sentence verdict",
-  "financial_summary": "2-3 sentences, cite actual numbers",
-  "competitive_position": "2-3 sentences vs the named competitors",
-  "key_risks": ["short bullet", "short bullet"],
-  "recommendation": "one paragraph: proceed / proceed with caution / pass, and why",
-  "limitations": "one sentence on what this brief does NOT cover (e.g. qualitative diligence, legal review)"
+  "headline": "one sharp sentence verdict, e.g. 'Steady grower with margin pressure — proceed with valuation discipline'",
+  "financial_summary": "3-4 sentences citing exact revenue/net income figures and YoY or CAGR growth rates from the data given",
+  "forecast_analysis": "2-3 sentences interpreting the computed CAGR and trend projections — what it implies, and explicitly flag the confidence level given (low/moderate) and why that matters for reliance on the number",
+  "competitive_position": "2-3 sentences vs the named competitors, citing specific margin/revenue comparisons from the data",
+  "key_risks": ["short bullet citing a specific figure or event", "short bullet citing a specific figure or event"],
+  "recommendation": "one paragraph: proceed / proceed with caution / pass — with explicit reasoning tied to the numbers above, not generic advice",
+  "limitations": "one sentence on what this brief does NOT cover (e.g. qualitative diligence, legal review, macro assumptions, DCF-grade valuation)"
 }}
 """
     return _call_gemini_json(system, user)

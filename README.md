@@ -112,6 +112,12 @@ git push -u origin main
 
 ## Limitations (be upfront about these in interviews — it's a strength, not a weakness)
 
+- **Ticker coverage**: works for any company SEC currently tracks with standard
+  XBRL financial tags — both US-domestic filers (Form 10-K) and foreign
+  private issuers (Form 20-F, e.g. Toyota, Sony). It will NOT work for
+  companies that have delisted/deregistered from US markets (e.g. Tata
+  Motors, ticker `TTM`, delisted from NYSE in Jan 2023) or that never filed
+  with the SEC at all (most non-US-listed companies).
 - Financial metric extraction should be spot-checked against filings before
   any real decision is made on it — this is a first-draft tool, not a
   replacement for verified diligence

@@ -13,6 +13,7 @@ from langgraph.graph import StateGraph, END
 from data.edgar_client import get_company_profile
 from data.news_client import get_recent_news
 from agents.benchmarker_agent import benchmark_against_peers
+from agents.forecaster_agent import forecast_agent
 from agents.llm_agents import risk_flagger_agent, briefing_agent
 
 
@@ -21,6 +22,7 @@ class DDState(TypedDict, total=False):
     company_name: str
     metrics: dict
     competitor_summary: dict
+    forecast_output: dict
     news_snippets: list
     risk_output: dict
     brief: dict
@@ -41,6 +43,11 @@ def node_benchmarker(state: DDState) -> DDState:
     return {"competitor_summary": comparison}
 
 
+def node_forecaster(state: DDState) -> DDState:
+    forecasts = forecast_agent(state["metrics"], years_ahead=2)
+    return {"forecast_output": forecasts}
+
+
 def node_risk_flagger(state: DDState) -> DDState:
     news = get_recent_news(state["company_name"])
     risk = risk_flagger_agent(state["company_name"], state["metrics"], news)
@@ -54,6 +61,7 @@ def node_briefing(state: DDState) -> DDState:
         metrics=state["metrics"],
         competitor_summary=state["competitor_summary"],
         risk_output=state["risk_output"],
+        forecast_output=state["forecast_output"],
     )
     return {"brief": brief}
 
@@ -62,12 +70,14 @@ def build_graph():
     graph = StateGraph(DDState)
     graph.add_node("extractor", node_extractor)
     graph.add_node("benchmarker", node_benchmarker)
+    graph.add_node("forecaster", node_forecaster)
     graph.add_node("risk_flagger", node_risk_flagger)
     graph.add_node("briefing", node_briefing)
 
     graph.set_entry_point("extractor")
     graph.add_edge("extractor", "benchmarker")
-    graph.add_edge("benchmarker", "risk_flagger")
+    graph.add_edge("benchmarker", "forecaster")
+    graph.add_edge("forecaster", "risk_flagger")
     graph.add_edge("risk_flagger", "briefing")
     graph.add_edge("briefing", END)
 
