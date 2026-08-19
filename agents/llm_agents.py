@@ -1,13 +1,14 @@
 """
-The two 'thinking' agents in the pipeline. Both call Claude with structured
+The two 'thinking' agents in the pipeline. Both call Gemini with structured
 prompts and JSON-mode output so results are predictable and chartable,
 not free-text blobs.
 
-Requires: ANTHROPIC_API_KEY environment variable.
+Requires: GOOGLE_API_KEY environment variable (free, no credit card —
+get one at https://aistudio.google.com/apikey)
 """
 import os
 import json
-import anthropic
+import google.generativeai as genai
 
 
 def _get_secret(key: str) -> str | None:
@@ -23,21 +24,18 @@ def _get_secret(key: str) -> str | None:
         return None
 
 
-client = anthropic.Anthropic(api_key=_get_secret("ANTHROPIC_API_KEY"))
-MODEL = "claude-sonnet-4-6"
+genai.configure(api_key=_get_secret("GOOGLE_API_KEY"))
+MODEL = "gemini-2.5-flash"
 
 
-def _call_claude_json(system: str, user: str) -> dict:
-    """Helper: call Claude, force JSON-only output, parse it safely."""
-    resp = client.messages.create(
-        model=MODEL,
-        max_tokens=1500,
-        system=system,
-        messages=[{"role": "user", "content": user}],
+def _call_gemini_json(system: str, user: str) -> dict:
+    """Helper: call Gemini, force JSON-only output via response_mime_type, parse it safely."""
+    model = genai.GenerativeModel(model_name=MODEL, system_instruction=system)
+    resp = model.generate_content(
+        user,
+        generation_config={"response_mime_type": "application/json"},
     )
-    text = resp.content[0].text.strip()
-    # Strip accidental markdown fences
-    text = text.replace("```json", "").replace("```", "").strip()
+    text = resp.text.strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:
@@ -73,7 +71,7 @@ Return JSON in exactly this shape:
   "confidence_note": "one sentence on what data would improve this assessment"
 }}
 """
-    return _call_claude_json(system, user)
+    return _call_gemini_json(system, user)
 
 
 def briefing_agent(company_name: str, ticker: str, metrics: dict,
@@ -110,4 +108,4 @@ Return JSON in exactly this shape:
   "limitations": "one sentence on what this brief does NOT cover (e.g. qualitative diligence, legal review)"
 }}
 """
-    return _call_claude_json(system, user)
+    return _call_gemini_json(system, user)

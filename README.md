@@ -26,9 +26,9 @@ a blank page.
      ▼
 ┌─────────────┐     ┌───────────────┐     ┌────────────────┐     ┌────────────────┐
 │  Extractor   │ --> │  Benchmarker  │ --> │  Risk Flagger   │ --> │  Briefing Agent │
-│ (SEC EDGAR   │     │ (peer metric  │     │ (news + metric  │     │ (Claude:        │
+│ (SEC EDGAR   │     │ (peer metric  │     │ (news + metric  │     │ (Gemini:        │
 │  XBRL facts) │     │  comparison)  │     │  red flags,     │     │  synthesizes    │
-│              │     │               │     │  Claude-powered)│     │  exec brief)    │
+│              │     │               │     │  Gemini-powered)│     │  exec brief)    │
 └─────────────┘     └───────────────┘     └────────────────┘     └────────────────┘
 ```
 
@@ -41,9 +41,9 @@ independently swappable/testable, versus one large prompt.
   cash) directly from SEC's XBRL API — no PDF scraping, no hallucinated numbers.
 - **Benchmarker**: pure arithmetic (not LLM) comparison against named
   competitors — deliberately avoids using an LLM where a calculator suffices.
-- **Risk Flagger**: Claude reads recent news + the metric trend and flags
+- **Risk Flagger**: Gemini reads recent news + the metric trend and flags
   concrete, evidence-cited risks (never speculative).
-- **Briefing Agent**: Claude synthesizes everything into a partner-ready brief
+- **Briefing Agent**: Gemini synthesizes everything into a partner-ready brief
   with an explicit recommendation and a stated limitation.
 
 ## Run it in GitHub Codespaces (recommended — zero local setup)
@@ -52,7 +52,7 @@ independently swappable/testable, versus one large prompt.
    (or use the badge above). The devcontainer auto-installs everything.
 2. Once the codespace opens, set your API key for the session:
    ```bash
-   export ANTHROPIC_API_KEY="your-key-here"
+   export GOOGLE_API_KEY="your-google-gemini-key-here"
    export TAVILY_API_KEY="your-key-here"   # optional
    ```
 3. Run the app:
@@ -82,8 +82,8 @@ add more in `agents/benchmarker_agent.py`).
 3. Select your repo, branch `main`, and set the main file path to `ui/app.py`.
 4. In **Advanced settings → Secrets**, paste:
    ```toml
-   ANTHROPIC_API_KEY = "your-key-here"
-   TAVILY_API_KEY = "your-key-here"
+   GOOGLE_API_KEY = "your-google-gemini-key-here"
+   TAVILY_API_KEY = "your-google-gemini-key-here"
    ```
 5. Deploy. You'll get a public URL like `https://due-diligence-agent.streamlit.app`
    — put that at the top of this README and on your LinkedIn/portfolio.
