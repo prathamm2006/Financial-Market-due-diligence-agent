@@ -136,31 +136,43 @@ with col_btn:
 # showing the pipeline work is more credible than a spinner hiding it)
 # ---------------------------------------------------------------------------
 def run_with_progress(ticker: str):
+    """
+    Runs the graph ONCE via a single app.stream() call and updates the
+    progress display as each node completes. (Previous version called
+    .stream() once per displayed stage label and drained the whole
+    generator each time — since LangGraph has no checkpointing here,
+    that silently re-ran the ENTIRE pipeline, including both Gemini
+    calls, multiple times per click. That extra load is what was
+    triggering Gemini's 503 UNAVAILABLE — not bad luck.)
+    """
     app = build_graph()
-    state = {"ticker": ticker}
-    stages = [
-        ("extractor", "Pulling SEC EDGAR filings"),
-        ("benchmarker", "Benchmarking against peers"),
-        ("forecaster", "Computing trend forecasts"),
-        ("risk_flagger", "Scanning for risk signals"),
-        ("briefing", "Synthesizing executive brief"),
+    stage_labels = [
+        "Pulling SEC EDGAR filings",
+        "Benchmarking against peers",
+        "Computing trend forecasts",
+        "Scanning for risk signals",
+        "Synthesizing executive brief",
     ]
     progress_box = st.empty()
     completed = []
     result = {}
-    for node_name, label in stages:
+
+    # stream_mode="values" yields the initial state first (index 0, before
+    # any node has run), then the accumulated state after each subsequent
+    # node — so event i>0 corresponds to stage_labels[i-1] finishing.
+    for i, event in enumerate(app.stream({"ticker": ticker}, stream_mode="values")):
+        result = event
+        if i > 0:
+            completed.append(stage_labels[i - 1])
         with progress_box.container():
             lines = [f"<span class='pos'>✓</span> {done}" for done in completed]
-            lines.append(f"<span class='neu'>▸</span> {label}...")
+            if len(completed) < len(stage_labels):
+                lines.append(f"<span class='neu'>▸</span> {stage_labels[len(completed)]}...")
             st.markdown(
                 f"<div class='metric-card'><div style='font-family:IBM Plex Mono,monospace; font-size:0.85rem; line-height:1.9;'>"
                 + "<br>".join(lines) + "</div></div>",
                 unsafe_allow_html=True,
             )
-        for event in app.stream(state, stream_mode="values"):
-            result = event
-        completed.append(label)
-        state = result
     progress_box.empty()
     return result
 

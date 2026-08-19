@@ -8,6 +8,7 @@ get one at https://aistudio.google.com/apikey)
 """
 import os
 import json
+import time
 from google import genai
 from google.genai import types
 
@@ -46,21 +47,38 @@ def _get_client():
     return _client
 
 
-def _call_gemini_json(system: str, user: str) -> dict:
-    """Helper: call Gemini, force JSON-only output via response_mime_type, parse it safely."""
-    resp = _get_client().models.generate_content(
-        model=MODEL,
-        contents=user,
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            response_mime_type="application/json",
-        ),
-    )
-    text = resp.text.strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return {"error": "Could not parse model output", "raw": text}
+def _call_gemini_json(system: str, user: str, max_retries: int = 3) -> dict:
+    """
+    Helper: call Gemini, force JSON-only output via response_mime_type,
+    parse it safely. Retries with exponential backoff on transient
+    server-side overload errors (503 UNAVAILABLE) — Gemini's free tier
+    can return these under load, and a single retry after a short wait
+    usually succeeds.
+    """
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            resp = _get_client().models.generate_content(
+                model=MODEL,
+                contents=user,
+                config=types.GenerateContentConfig(
+                    system_instruction=system,
+                    response_mime_type="application/json",
+                ),
+            )
+            text = resp.text.strip()
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                return {"error": "Could not parse model output", "raw": text}
+        except Exception as e:
+            last_error = e
+            is_transient = "503" in str(e) or "UNAVAILABLE" in str(e) or "overloaded" in str(e).lower()
+            if is_transient and attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # 1s, 2s, 4s
+                continue
+            raise
+    raise last_error
 
 
 def risk_flagger_agent(company_name: str, metrics: dict, news_snippets: list[str]) -> dict:
