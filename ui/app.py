@@ -301,10 +301,48 @@ if run_btn:
 
     st.divider()
     with st.expander("Competitor benchmark data"):
-        st.json(result.get("competitor_summary", {}))
-    with st.expander("Forecast agent raw output"):
-        st.json(forecast)
-    with st.expander("Risk agent raw output"):
-        st.json(result.get("risk_output", {}))
-    with st.expander("Full pipeline state (debugging / interview walkthrough)"):
+        comp = result.get("competitor_summary", {})
+        target_snap = comp.get("target_snapshot", {})
+        rows = [{
+            "Company": f"{ticker} (target)",
+            "Revenue": fmt_usd(target_snap.get("revenue")),
+            "Net income": fmt_usd(target_snap.get("net_income")),
+            "Net margin": f"{target_snap.get('net_margin_pct', '—')}%" if target_snap.get("net_margin_pct") is not None else "—",
+        }]
+        for peer_ticker, peer_data in comp.get("peers", {}).items():
+            if "error" in peer_data:
+                rows.append({"Company": peer_ticker, "Revenue": "—", "Net income": "—", "Net margin": "no data"})
+            else:
+                rows.append({
+                    "Company": f"{peer_data.get('company_name', peer_ticker)} ({peer_ticker})",
+                    "Revenue": fmt_usd(peer_data.get("revenue")),
+                    "Net income": fmt_usd(peer_data.get("net_income")),
+                    "Net margin": f"{peer_data.get('net_margin_pct', '—')}%" if peer_data.get("net_margin_pct") is not None else "—",
+                })
+        st.table(rows)
+
+    with st.expander("Forecast agent output"):
+        for metric_name, fdata in forecast.items():
+            st.markdown(f"**{metric_name.replace('_', ' ').title()}**")
+            cagr = fdata.get("cagr_pct")
+            conf = fdata.get("confidence", "—")
+            st.write(f"CAGR: {cagr:+.1f}%" if cagr is not None else "CAGR: not enough data")
+            st.write(f"Confidence: {conf}")
+            st.caption(fdata.get("note", ""))
+            projections = fdata.get("projections", [])
+            if projections:
+                st.write("Projected values:")
+                for p in projections:
+                    st.write(f"— {p['year']}: {fmt_usd(p['value'])}")
+            st.markdown("---")
+
+    with st.expander("Risk agent output"):
+        risk_out = result.get("risk_output", {})
+        st.write(f"**Overall risk level:** {risk_out.get('overall_risk_level', '—')}")
+        for flag in risk_out.get("risk_flags", []):
+            st.markdown(f"**{flag.get('flag', '')}** — *{flag.get('severity', '')}*")
+            st.caption(flag.get("evidence", ""))
+        st.caption(f"Confidence note: {risk_out.get('confidence_note', '')}")
+
+    with st.expander("Full pipeline state (raw JSON — debugging / interview walkthrough)"):
         st.json(result)
