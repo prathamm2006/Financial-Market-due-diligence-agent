@@ -48,15 +48,40 @@ def _linear_trend_forecast(series: list[dict], years_ahead: int = 2) -> list[dic
     return projections
 
 
+def _scenario_projections(last_actual: float, last_year: int, cagr: float, years_ahead: int) -> dict:
+    """
+    Compound-growth scenario bands around the historical CAGR — this is
+    the 'consultant lens' addition: a single-point forecast implies false
+    precision, whereas a bear/base/bull range makes the uncertainty
+    explicit and is how real financial models are actually presented.
+
+    The spread is a simple ±50% of the historical CAGR (with a 3% floor
+    so near-zero CAGRs still produce a visible range) — deliberately a
+    transparent, explainable heuristic rather than a black-box model.
+    """
+    spread = max(abs(cagr) * 0.5, 0.03)
+    bear_rate = cagr - spread
+    bull_rate = cagr + spread
+    scenarios = {"bear": [], "base": [], "bull": []}
+    for i in range(1, years_ahead + 1):
+        yr = str(last_year + i)
+        scenarios["bear"].append({"year": yr, "value": round(last_actual * (1 + bear_rate) ** i)})
+        scenarios["base"].append({"year": yr, "value": round(last_actual * (1 + cagr) ** i)})
+        scenarios["bull"].append({"year": yr, "value": round(last_actual * (1 + bull_rate) ** i)})
+    return scenarios
+
+
 def forecast_metric(series: list[dict], years_ahead: int = 2) -> dict:
     """
     Given a metric's historical series (most-recent-first, from edgar_client),
-    returns CAGR, a linear-trend projection, and an honest confidence note.
+    returns CAGR, a linear-trend projection, bull/base/bear scenario bands,
+    and an honest confidence note.
     """
     if not series or len(series) < 2:
         return {
             "cagr_pct": None,
             "projections": [],
+            "scenarios": {"bear": [], "base": [], "bull": []},
             "confidence": "insufficient_data",
             "note": "Fewer than 2 years of history available — cannot compute a reliable trend.",
         }
@@ -68,6 +93,15 @@ def forecast_metric(series: list[dict], years_ahead: int = 2) -> dict:
     cagr = _cagr(start, end, periods) if periods > 0 else None
 
     projections = _linear_trend_forecast(series, years_ahead=years_ahead)
+
+    scenarios = {"bear": [], "base": [], "bull": []}
+    if cagr is not None:
+        scenarios = _scenario_projections(
+            last_actual=chrono[-1]["value"],
+            last_year=int(chrono[-1]["year"]),
+            cagr=cagr,
+            years_ahead=years_ahead,
+        )
 
     # Confidence is honest, not decorative: short history or wildly volatile
     # trends get flagged, not silently smoothed over.
@@ -85,11 +119,14 @@ def forecast_metric(series: list[dict], years_ahead: int = 2) -> dict:
     return {
         "cagr_pct": round(cagr * 100, 1) if cagr is not None else None,
         "projections": projections,
+        "scenarios": scenarios,
         "confidence": confidence,
         "note": (
             f"Linear trend on {len(chrono)} years of reported data. "
             "This is a naive projection method (no seasonality, macro, or "
-            "competitive dynamics modeled) — treat as a directional estimate only."
+            "competitive dynamics modeled) — treat as a directional estimate only. "
+            "Bull/bear bands apply a ±50% spread around the historical CAGR as a "
+            "simple sensitivity range, not a probabilistic forecast."
         ),
     }
 

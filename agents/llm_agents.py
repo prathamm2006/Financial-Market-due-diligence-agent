@@ -115,12 +115,13 @@ Return JSON in exactly this shape:
 
 def briefing_agent(company_name: str, ticker: str, metrics: dict,
                     competitor_summary: dict, risk_output: dict,
-                    forecast_output: dict) -> dict:
+                    forecast_output: dict, valuation_output: dict) -> dict:
     """
     The synthesis agent — takes everything the other agents produced
-    (including COMPUTED forecasts, not LLM-guessed ones) and writes the
-    executive-ready brief. The LLM's job here is interpretation and
-    narrative, not arithmetic — the numbers it's given are already correct.
+    (including COMPUTED forecasts and live valuation multiples, not
+    LLM-guessed ones) and writes the executive-ready brief. The LLM's
+    job here is interpretation and narrative, not arithmetic — the
+    numbers it's given are already correct.
     """
     system = (
         "You are a senior equity research analyst with 15+ years of experience "
@@ -130,8 +131,12 @@ def briefing_agent(company_name: str, ticker: str, metrics: dict,
         "call. You never write generic filler like 'the company shows strong "
         "fundamentals' without citing the exact figure that supports it. "
         "You are given ALREADY-COMPUTED forecast figures (CAGR, trend "
-        "projections) — use them, cite them, but never invent numbers not "
-        "given to you. Respond with ONLY valid JSON."
+        "projections, bull/base/bear scenarios) and LIVE valuation multiples "
+        "(P/E, EV/EBITDA, price/sales) — use them, cite them, but never invent "
+        "numbers not given to you. A due-diligence brief that doesn't address "
+        "whether the stock is cheap or expensive relative to peers is "
+        "incomplete — always weigh in on valuation explicitly. Respond with "
+        "ONLY valid JSON."
     )
     user = f"""
 Company: {company_name} ({ticker})
@@ -139,11 +144,16 @@ Company: {company_name} ({ticker})
 Historical financial metrics (most recent year first):
 {json.dumps(metrics, indent=2)}
 
-Computed forward-looking forecasts (CAGR + linear trend projections,
-already calculated — cite these directly, do not recompute):
+Computed forward-looking forecasts (CAGR + linear trend + bull/base/bear
+scenario projections, already calculated — cite these directly, do not
+recompute):
 {json.dumps(forecast_output, indent=2)}
 
-Competitor benchmark:
+Live valuation multiples (target vs peers, already calculated from live
+market data — cite directly):
+{json.dumps(valuation_output, indent=2)}
+
+Competitor benchmark (financials):
 {json.dumps(competitor_summary, indent=2)}
 
 Risk analysis:
@@ -151,12 +161,13 @@ Risk analysis:
 
 Return JSON in exactly this shape:
 {{
-  "headline": "one sharp sentence verdict, e.g. 'Steady grower with margin pressure — proceed with valuation discipline'",
+  "headline": "one sharp sentence verdict, e.g. 'Steady grower trading at a premium — proceed with valuation discipline'",
   "financial_summary": "3-4 sentences citing exact revenue/net income figures and YoY or CAGR growth rates from the data given",
-  "forecast_analysis": "2-3 sentences interpreting the computed CAGR and trend projections — what it implies, and explicitly flag the confidence level given (low/moderate) and why that matters for reliance on the number",
+  "forecast_analysis": "2-3 sentences interpreting the computed CAGR and bull/base/bear scenario range — explicitly mention the spread between bear and bull cases and the stated confidence level",
+  "valuation_analysis": "2-3 sentences stating whether the stock looks cheap or expensive vs peers, citing the specific P/E, EV/EBITDA, or price/sales figures given — if valuation data is unavailable, say so explicitly rather than skipping this",
   "competitive_position": "2-3 sentences vs the named competitors, citing specific margin/revenue comparisons from the data",
   "key_risks": ["short bullet citing a specific figure or event", "short bullet citing a specific figure or event"],
-  "recommendation": "one paragraph: proceed / proceed with caution / pass — with explicit reasoning tied to the numbers above, not generic advice",
+  "recommendation": "one paragraph: proceed / proceed with caution / pass — with explicit reasoning tied to the numbers above (including valuation), not generic advice",
   "limitations": "one sentence on what this brief does NOT cover (e.g. qualitative diligence, legal review, macro assumptions, DCF-grade valuation)"
 }}
 """

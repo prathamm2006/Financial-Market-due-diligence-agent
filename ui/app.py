@@ -171,6 +171,7 @@ def run_with_progress(ticker: str):
         "Pulling SEC EDGAR filings",
         "Benchmarking against peers",
         "Computing trend forecasts",
+        "Pulling live valuation multiples",
         "Scanning for risk signals",
         "Synthesizing executive brief",
     ]
@@ -209,6 +210,8 @@ if run_btn:
     brief = result.get("brief", {})
     metrics = result.get("metrics", {})
     forecast = result.get("forecast_output", {})
+    valuation = result.get("valuation_output", {})
+    filing_url = result.get("filing_index_url", "")
 
     if "error" in brief:
         st.warning("Briefing agent had trouble parsing output — see raw below.")
@@ -216,7 +219,14 @@ if run_btn:
         st.stop()
 
     # -- Headline verdict -----------------------------------------------
-    st.markdown(f"### {company_name} <span style='color:var(--muted); font-family:IBM Plex Mono,monospace; font-size:1rem;'>{ticker}</span>", unsafe_allow_html=True)
+    filing_link_html = (
+        f" · <a href='{filing_url}' target='_blank' style='color:var(--amber); text-decoration:none;'>view SEC filings ↗</a>"
+        if filing_url else ""
+    )
+    st.markdown(
+        f"### {company_name} <span style='color:var(--muted); font-family:IBM Plex Mono,monospace; font-size:1rem;'>{ticker}{filing_link_html}</span>",
+        unsafe_allow_html=True,
+    )
     st.markdown(
         f"""<div class="verdict-band">
               <div class="verdict-headline">{brief.get('headline', '')}</div>
@@ -264,28 +274,65 @@ if run_btn:
                 unsafe_allow_html=True,
             )
 
-    # -- Chart: history + projection ----------------------------------------
-    st.markdown("<div class='section-label'>Revenue — historical &amp; projected</div>", unsafe_allow_html=True)
+    # -- Valuation cards (live market data) ---------------------------------
+    target_val = valuation.get("target", {})
+    if target_val.get("available"):
+        v1, v2, v3, v4 = st.columns(4)
+        for col, label, value, sub in [
+            (v1, "Price", f"${target_val.get('price', '—')}" if target_val.get("price") else "—", "live quote"),
+            (v2, "Market cap", fmt_usd(target_val.get("market_cap")), "—"),
+            (v3, "P/E ratio", f"{target_val.get('pe_ratio', '—')}x" if target_val.get("pe_ratio") else "n/a", "trailing"),
+            (v4, "EV/EBITDA (proxy)", f"{target_val.get('ev_ebitda_proxy', '—')}x" if target_val.get("ev_ebitda_proxy") else "n/a", "operating income proxy"),
+        ]:
+            with col:
+                st.markdown(
+                    f"""<div class="metric-card">
+                          <div class="metric-label">{label}</div>
+                          <div class="metric-value">{value}</div>
+                          <div class="metric-sub neu">{sub}</div>
+                        </div>""",
+                    unsafe_allow_html=True,
+                )
+        st.caption(target_val.get("note", ""))
+    else:
+        st.caption(f"Live valuation data unavailable: {target_val.get('reason', 'unknown')}")
+
+    # -- Chart: history + scenario bands ----------------------------------------
+    st.markdown("<div class='section-label'>Revenue — historical &amp; scenario forecast</div>", unsafe_allow_html=True)
     if metrics.get("revenue"):
         hist = list(reversed(metrics["revenue"]))
-        proj = forecast.get("revenue", {}).get("projections", [])
-        conf = forecast.get("revenue", {}).get("confidence", "low")
+        rev_forecast = forecast.get("revenue", {})
+        scenarios = rev_forecast.get("scenarios", {"bear": [], "base": [], "bull": []})
+        conf = rev_forecast.get("confidence", "low")
 
         fig = go.Figure()
         fig.add_trace(go.Bar(
             x=[p["year"] for p in hist], y=[p["value"] for p in hist],
             name="Reported", marker_color="#C99A3C", width=0.5,
         ))
-        if proj:
+        if scenarios.get("bull"):
             fig.add_trace(go.Bar(
-                x=[p["year"] for p in proj], y=[p["value"] for p in proj],
-                name="Projected (linear trend)", marker_color="rgba(201,154,60,0.28)",
-                marker_line=dict(color="#C99A3C", width=1), width=0.5,
+                x=[p["year"] for p in scenarios["bull"]], y=[p["value"] for p in scenarios["bull"]],
+                name="Bull case", marker_color="rgba(74,222,128,0.25)",
+                marker_line=dict(color="#4ADE80", width=1), width=0.28,
+            ))
+        if scenarios.get("base"):
+            fig.add_trace(go.Bar(
+                x=[p["year"] for p in scenarios["base"]], y=[p["value"] for p in scenarios["base"]],
+                name="Base case", marker_color="rgba(201,154,60,0.28)",
+                marker_line=dict(color="#C99A3C", width=1), width=0.28,
+            ))
+        if scenarios.get("bear"):
+            fig.add_trace(go.Bar(
+                x=[p["year"] for p in scenarios["bear"]], y=[p["value"] for p in scenarios["bear"]],
+                name="Bear case", marker_color="rgba(248,113,113,0.25)",
+                marker_line=dict(color="#F87171", width=1), width=0.28,
             ))
         fig.update_layout(
+            barmode="group",
             plot_bgcolor="#131A2B", paper_bgcolor="#131A2B",
             font=dict(family="IBM Plex Mono, monospace", color="#8792AB", size=11),
-            margin=dict(l=10, r=10, t=10, b=10), height=280,
+            margin=dict(l=10, r=10, t=10, b=10), height=300,
             legend=dict(orientation="h", y=1.15, font=dict(color="#E7EAF2")),
             xaxis=dict(gridcolor="#232D45"), yaxis=dict(gridcolor="#232D45"),
         )
@@ -301,6 +348,8 @@ if run_btn:
         st.write(brief.get("financial_summary", ""))
         st.markdown("<div class='section-label'>Forecast analysis</div>", unsafe_allow_html=True)
         st.write(brief.get("forecast_analysis", ""))
+        st.markdown("<div class='section-label'>Valuation</div>", unsafe_allow_html=True)
+        st.write(brief.get("valuation_analysis", ""))
     with right:
         st.markdown("<div class='section-label'>Competitive position</div>", unsafe_allow_html=True)
         st.write(brief.get("competitive_position", ""))
@@ -366,6 +415,26 @@ if run_btn:
                     "Net margin": f"{peer_data.get('net_margin_pct', '—')}%" if peer_data.get("net_margin_pct") is not None else "—",
                 })
         st.table(rows)
+
+    with st.expander("Valuation data (target vs peers)"):
+        val_target = valuation.get("target", {})
+        if val_target.get("available"):
+            rows = [{
+                "Company": f"{ticker} (target)",
+                "P/E": val_target.get("pe_ratio", "—"),
+                "Price/Sales": val_target.get("price_to_sales", "—"),
+                "Market cap": fmt_usd(val_target.get("market_cap")),
+            }]
+            for peer_ticker, pv in valuation.get("peers", {}).items():
+                rows.append({
+                    "Company": peer_ticker,
+                    "P/E": pv.get("pe_ratio", "—"),
+                    "Price/Sales": pv.get("price_to_sales", "—"),
+                    "Market cap": fmt_usd(pv.get("market_cap")),
+                })
+            st.table(rows)
+        else:
+            st.caption(f"Valuation data unavailable: {val_target.get('reason', 'unknown')}")
 
     with st.expander("Forecast agent output"):
         for metric_name, fdata in forecast.items():

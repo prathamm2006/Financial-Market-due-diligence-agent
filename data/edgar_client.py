@@ -71,43 +71,53 @@ def extract_key_metrics(company_facts: dict, years: int = 3) -> dict:
     non-US-domestic ticker would silently return empty metrics even when
     its CIK/filings are found, which reads as a confusing bug rather than
     a coverage limit.
+
+    IMPORTANT: many companies report the same concept under DIFFERENT GAAP
+    tags in different eras — e.g. revenue was tagged "Revenues" before the
+    2018 ASC 606 accounting standard change, and
+    "RevenueFromContractWithCustomerExcludingAssessedTax" after. A company's
+    full historical XBRL record includes BOTH tags. For each metric we
+    therefore check every known synonym tag and merge results by year
+    (newest-tag-first on any year both tags report), instead of stopping at
+    the first tag that has any data at all — otherwise we can silently lock
+    onto a years-stale tag even though fresh data exists under the newer one.
     """
     us_gaap = company_facts.get("facts", {}).get("us-gaap", {})
     ANNUAL_FORMS = {"10-K", "20-F"}
-    wanted = {
-        "Revenues": "revenue",
-        "RevenueFromContractWithCustomerExcludingAssessedTax": "revenue",
-        "NetIncomeLoss": "net_income",
-        "Assets": "total_assets",
-        "Liabilities": "total_liabilities",
-        "CashAndCashEquivalentsAtCarryingValue": "cash",
-        "LongTermDebtNoncurrent": "long_term_debt",
-        "OperatingIncomeLoss": "operating_income",
+    # Lists are ordered newest-tag-first — on a year reported under multiple
+    # tags, the earlier (newer-standard) tag's value wins.
+    wanted_groups = {
+        "revenue": [
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
+            "RevenueFromContractWithCustomerIncludingAssessedTax",
+            "Revenues",
+        ],
+        "net_income": ["NetIncomeLoss"],
+        "total_assets": ["Assets"],
+        "total_liabilities": ["Liabilities"],
+        "cash": ["CashAndCashEquivalentsAtCarryingValue"],
+        "long_term_debt": ["LongTermDebtNoncurrent"],
+        "operating_income": ["OperatingIncomeLoss"],
     }
 
     metrics = {}
-    for gaap_tag, clean_name in wanted.items():
-        if gaap_tag not in us_gaap:
-            continue
-        usd_facts = us_gaap[gaap_tag].get("units", {}).get("USD", [])
-        # Keep only annual (full fiscal year) data points, most recent first
-        annual = [
-            f for f in usd_facts
-            if f.get("form") in ANNUAL_FORMS and f.get("fp") == "FY"
-        ]
-        annual.sort(key=lambda f: f["end"], reverse=True)
-        seen_years = set()
-        series = []
-        for f in annual:
-            yr = f["end"][:4]
-            if yr in seen_years:
+    for clean_name, tag_list in wanted_groups.items():
+        year_to_value = {}  # year -> value; first (newest) tag to report a year wins
+        for gaap_tag in tag_list:
+            if gaap_tag not in us_gaap:
                 continue
-            seen_years.add(yr)
-            series.append({"year": yr, "value": f["val"]})
-            if len(series) >= years:
-                break
-        if clean_name not in metrics and series:
-            metrics[clean_name] = series
+            usd_facts = us_gaap[gaap_tag].get("units", {}).get("USD", [])
+            annual = [
+                f for f in usd_facts
+                if f.get("form") in ANNUAL_FORMS and f.get("fp") == "FY"
+            ]
+            for f in annual:
+                yr = f["end"][:4]
+                if yr not in year_to_value:
+                    year_to_value[yr] = f["val"]
+        if year_to_value:
+            top_years = sorted(year_to_value.keys(), reverse=True)[:years]
+            metrics[clean_name] = [{"year": y, "value": year_to_value[y]} for y in top_years]
 
     return metrics
 
@@ -127,7 +137,20 @@ def get_company_profile(ticker: str, years: int = 3) -> dict:
             "companies, recent IPOs with limited filing history, or filers "
             "using non-standard GAAP tags."
         )
-    return {"ticker": ticker.upper(), "cik": cik, "company_name": company_name, "metrics": metrics}
+    # Direct link to this company's actual filing index on SEC EDGAR — lets
+    # a user verify any extracted number against the primary source, which
+    # matters a lot for a due-diligence tool specifically.
+    filing_index_url = (
+        f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany"
+        f"&CIK={cik}&type=10-K&dateb=&owner=include&count=10"
+    )
+    return {
+        "ticker": ticker.upper(),
+        "cik": cik,
+        "company_name": company_name,
+        "metrics": metrics,
+        "filing_index_url": filing_index_url,
+    }
 
 
 if __name__ == "__main__":

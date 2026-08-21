@@ -25,6 +25,9 @@ def build_markdown_report(company_name: str, ticker: str, result: dict) -> str:
         "## Forecast Analysis",
         brief.get("forecast_analysis", ""),
         "",
+        "## Valuation",
+        brief.get("valuation_analysis", ""),
+        "",
         "## Competitive Position",
         brief.get("competitive_position", ""),
         "",
@@ -104,6 +107,7 @@ def build_pdf_report(company_name: str, ticker: str, result: dict) -> bytes:
 
     pdf.section("Financial Summary", brief.get("financial_summary", ""))
     pdf.section("Forecast Analysis", brief.get("forecast_analysis", ""))
+    pdf.section("Valuation", brief.get("valuation_analysis", ""))
     pdf.section("Competitive Position", brief.get("competitive_position", ""))
 
     risks_text = "\n".join(f"- {r}" for r in brief.get("key_risks", []))
