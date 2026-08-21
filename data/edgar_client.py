@@ -27,6 +27,9 @@ def get_all_tickers() -> list[dict]:
     tickers = [{"ticker": entry["ticker"], "title": entry["title"]} for entry in data.values()]
     tickers.sort(key=lambda t: t["ticker"])
     return tickers
+
+
+def get_cik_for_ticker(ticker: str) -> str:
     """Map a stock ticker (e.g. 'AAPL') to its 10-digit zero-padded CIK number."""
     resp = requests.get(TICKER_MAP_URL, headers=HEADERS)
     resp.raise_for_status()
