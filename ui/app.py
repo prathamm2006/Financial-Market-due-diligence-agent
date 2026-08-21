@@ -11,6 +11,8 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 from orchestrator import build_graph
+from data.edgar_client import get_all_tickers
+from agents.report_generator import build_markdown_report, build_pdf_report
 
 st.set_page_config(
     page_title="Due-Diligence Agent",
@@ -125,9 +127,28 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _load_ticker_options():
+    """Cached for 24h so we don't hit SEC's ticker map on every rerun."""
+    tickers = get_all_tickers()
+    return [f"{t['ticker']} — {t['title']}" for t in tickers]
+
+
 col_input, col_btn = st.columns([4, 1])
 with col_input:
-    ticker = st.text_input("Ticker", value="AAPL", label_visibility="collapsed", placeholder="Enter ticker, e.g. AAPL").upper()
+    try:
+        options = _load_ticker_options()
+        default_idx = next((i for i, o in enumerate(options) if o.startswith("AAPL —")), 0)
+        selection = st.selectbox(
+            "Ticker", options, index=default_idx,
+            label_visibility="collapsed",
+            help="Start typing a ticker or company name to search",
+        )
+        ticker = selection.split(" — ")[0].strip()
+    except Exception:
+        # Graceful fallback if SEC's ticker list is briefly unreachable
+        st.caption("Couldn't load the ticker list — type one manually instead.")
+        ticker = st.text_input("Ticker", value="AAPL", label_visibility="collapsed").upper()
 with col_btn:
     run_btn = st.button("Run analysis", use_container_width=True)
 
@@ -298,6 +319,31 @@ if run_btn:
     st.markdown("<div class='section-label'>Recommendation</div>", unsafe_allow_html=True)
     st.info(brief.get("recommendation", ""))
     st.markdown(f"<div class='limitation-note'>LIMITATIONS: {brief.get('limitations', '')}</div>", unsafe_allow_html=True)
+
+    # -- Downloads -----------------------------------------------------
+    st.markdown("<div class='section-label'>Export this brief</div>", unsafe_allow_html=True)
+    dl1, dl2 = st.columns(2)
+    with dl1:
+        try:
+            pdf_bytes = build_pdf_report(company_name, ticker, result)
+            st.download_button(
+                "⬇ Download PDF report",
+                data=pdf_bytes,
+                file_name=f"{ticker}_due_diligence_brief.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.caption(f"PDF export unavailable: {e}")
+    with dl2:
+        md_report = build_markdown_report(company_name, ticker, result)
+        st.download_button(
+            "⬇ Download Markdown report",
+            data=md_report,
+            file_name=f"{ticker}_due_diligence_brief.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
 
     st.divider()
     with st.expander("Competitor benchmark data"):

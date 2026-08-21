@@ -14,7 +14,19 @@ BASE = "https://data.sec.gov"
 TICKER_MAP_URL = "https://www.sec.gov/files/company_tickers.json"
 
 
-def get_cik_for_ticker(ticker: str) -> str:
+def get_all_tickers() -> list[dict]:
+    """
+    Returns the full list of tickers SEC currently tracks, as
+    [{"ticker": "AAPL", "title": "Apple Inc."}, ...] sorted alphabetically.
+    Used to power a searchable dropdown so users don't have to guess
+    valid tickers or hit 'not found' errors.
+    """
+    resp = requests.get(TICKER_MAP_URL, headers=HEADERS)
+    resp.raise_for_status()
+    data = resp.json()
+    tickers = [{"ticker": entry["ticker"], "title": entry["title"]} for entry in data.values()]
+    tickers.sort(key=lambda t: t["ticker"])
+    return tickers
     """Map a stock ticker (e.g. 'AAPL') to its 10-digit zero-padded CIK number."""
     resp = requests.get(TICKER_MAP_URL, headers=HEADERS)
     resp.raise_for_status()
