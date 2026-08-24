@@ -115,19 +115,6 @@ st.markdown(CSS, unsafe_allow_html=True)
 # ---------------------------------------------------------------------------
 # HEADER
 # ---------------------------------------------------------------------------
-st.markdown(
-    f"""
-    <div class="ledger-header">
-      <div>
-        <div class="ledger-title">Due-Diligence Agent</div>
-        <div class="ledger-sub">multi-agent research pipeline · SEC EDGAR · live synthesis</div>
-      </div>
-      <div class="ledger-tag">{datetime.now().strftime('%d %b %Y')}</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
 @st.cache_data(ttl=86400, show_spinner=False)
 def _load_us_ticker_options():
     """Cached for 24h so we don't hit SEC's ticker map on every rerun."""
@@ -144,6 +131,21 @@ def _load_india_ticker_options():
 market = st.radio(
     "Market", ["🇺🇸 US (SEC EDGAR)", "🇮🇳 India (NSE)"],
     horizontal=True, label_visibility="collapsed",
+)
+
+data_source_label = "NSE · Yahoo Finance" if market.startswith("🇮🇳") else "SEC EDGAR"
+
+st.markdown(
+    f"""
+    <div class="ledger-header">
+      <div>
+        <div class="ledger-title">Due-Diligence Agent</div>
+        <div class="ledger-sub">multi-agent research pipeline · {data_source_label} · live synthesis</div>
+      </div>
+      <div class="ledger-tag">{datetime.now().strftime('%d %b %Y')}</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 col_input, col_btn = st.columns([4, 1])
