@@ -7,6 +7,37 @@ from datetime import datetime
 from fpdf import FPDF
 
 
+def _sanitize_pdf_text(text) -> str:
+    """
+    fpdf2's built-in core fonts (Helvetica etc.) only support the Latin-1
+    character set, not full Unicode — so em-dashes, curly quotes, and
+    similar characters that Gemini's output regularly includes will crash
+    PDF generation. Rather than bundling a full Unicode font just to
+    support a handful of punctuation marks, we normalize those characters
+    to their plain-ASCII equivalents before they reach the PDF.
+    """
+    if not isinstance(text, str):
+        return text
+    replacements = {
+        "\u2014": "-",   # em dash —
+        "\u2013": "-",   # en dash –
+        "\u2018": "'",   # left single quote '
+        "\u2019": "'",   # right single quote '
+        "\u201c": '"',   # left double quote "
+        "\u201d": '"',   # right double quote "
+        "\u2026": "...", # ellipsis …
+        "\u2022": "-",   # bullet •
+        "\u2192": "->",  # right arrow →
+        "\u2260": "!=",  # not equal ≠
+        "\u00d7": "x",   # multiplication sign ×
+    }
+    for uni_char, ascii_equiv in replacements.items():
+        text = text.replace(uni_char, ascii_equiv)
+    # Final safety net: strip anything still outside Latin-1 rather than
+    # letting a stray character crash the whole PDF export.
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
 def build_markdown_report(company_name: str, ticker: str, result: dict) -> str:
     brief = result.get("brief", {})
     forecast = result.get("forecast_output", {})
@@ -71,10 +102,10 @@ class _ReportPDF(FPDF):
     def header(self):
         self.set_font("Helvetica", "B", 14)
         self.set_text_color(20, 20, 20)
-        self.cell(0, 10, self.title_text, ln=True)
+        self.cell(0, 10, _sanitize_pdf_text(self.title_text), ln=True)
         self.set_font("Helvetica", "", 9)
         self.set_text_color(120, 120, 120)
-        self.cell(0, 6, self.subtitle_text, ln=True)
+        self.cell(0, 6, _sanitize_pdf_text(self.subtitle_text), ln=True)
         self.ln(4)
         self.set_draw_color(200, 200, 200)
         self.line(10, self.get_y(), 200, self.get_y())
@@ -83,10 +114,10 @@ class _ReportPDF(FPDF):
     def section(self, heading: str, body: str):
         self.set_font("Helvetica", "B", 11)
         self.set_text_color(180, 130, 40)
-        self.cell(0, 8, heading.upper(), ln=True)
+        self.cell(0, 8, _sanitize_pdf_text(heading.upper()), ln=True)
         self.set_font("Helvetica", "", 10)
         self.set_text_color(30, 30, 30)
-        self.multi_cell(0, 5.5, body)
+        self.multi_cell(0, 5.5, _sanitize_pdf_text(body))
         self.ln(3)
 
 
@@ -102,7 +133,7 @@ def build_pdf_report(company_name: str, ticker: str, result: dict) -> bytes:
 
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(20, 20, 20)
-    pdf.multi_cell(0, 6, brief.get("headline", ""))
+    pdf.multi_cell(0, 6, _sanitize_pdf_text(brief.get("headline", "")))
     pdf.ln(3)
 
     pdf.section("Financial Summary", brief.get("financial_summary", ""))
