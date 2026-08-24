@@ -58,9 +58,14 @@ def get_company_profile_yf(ticker: str, years: int = 3) -> dict:
 
     if not info or info.get("regularMarketPrice") is None and info.get("currentPrice") is None:
         raise ValueError(
-            f"'{ticker}' returned no usable data from Yahoo Finance. "
-            "Double-check the exchange suffix — NSE tickers need '.NS' "
-            "(e.g. 'RELIANCE.NS'), BSE tickers need '.BO'."
+            f"'{ticker}' returned no usable data from Yahoo Finance. This "
+            "usually means one of: (1) the exchange suffix is wrong — NSE "
+            "tickers need '.NS' (e.g. 'RELIANCE.NS'), BSE tickers need "
+            "'.BO'; (2) the company underwent a corporate rename/symbol "
+            "change and this ticker is now stale (this happens periodically "
+            "in India — e.g. Zomato became 'ETERNAL.NS' in 2025); or (3) "
+            "it's a typo. Try a well-known ticker like RELIANCE.NS or "
+            "TCS.NS to confirm the pipeline itself is working."
         )
 
     company_name = info.get("longName") or info.get("shortName") or ticker

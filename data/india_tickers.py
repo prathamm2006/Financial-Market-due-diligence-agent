@@ -63,7 +63,7 @@ NIFTY_50 = [
 # Notable large/actively-traded Indian names outside the current Nifty 50 —
 # frequently searched, worth including even though not index constituents.
 OTHER_NOTABLE_INDIAN_STOCKS = [
-    {"ticker": "ZOMATO.NS", "title": "Eternal Ltd (Zomato)"},
+    {"ticker": "ETERNAL.NS", "title": "Eternal Ltd (formerly Zomato)"},
     {"ticker": "PAYTM.NS", "title": "One97 Communications Ltd (Paytm)"},
     {"ticker": "IRCTC.NS", "title": "Indian Railway Catering & Tourism Corp"},
     {"ticker": "DMART.NS", "title": "Avenue Supermarts Ltd (DMart)"},
