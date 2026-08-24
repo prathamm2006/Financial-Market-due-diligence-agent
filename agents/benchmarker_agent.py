@@ -4,7 +4,8 @@ computes simple relative comparisons. Deliberately NOT LLM-based:
 this is arithmetic, and doing arithmetic with a calculator instead of
 an LLM is itself a signal of good engineering judgment.
 """
-from data.edgar_client import get_company_profile
+from data.company_data import get_company_profile
+from data.india_tickers import INDIA_PEER_MAP
 
 # Simple starter peer map — expand this per sector as you demo more companies.
 PEER_MAP = {
@@ -12,6 +13,7 @@ PEER_MAP = {
     "TGT": ["WMT", "COST"],
     "JPM": ["BAC", "WFC"],
     "KO": ["PEP"],
+    **INDIA_PEER_MAP,
 }
 
 

@@ -12,6 +12,7 @@ from datetime import datetime
 
 from orchestrator import build_graph
 from data.edgar_client import get_all_tickers
+from data.india_tickers import get_india_ticker_options
 from agents.report_generator import build_markdown_report, build_pdf_report
 
 st.set_page_config(
@@ -128,27 +129,48 @@ st.markdown(
 )
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def _load_ticker_options():
+def _load_us_ticker_options():
     """Cached for 24h so we don't hit SEC's ticker map on every rerun."""
     tickers = get_all_tickers()
     return [f"{t['ticker']} — {t['title']}" for t in tickers]
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _load_india_ticker_options():
+    tickers = get_india_ticker_options()
+    return [f"{t['ticker']} — {t['title']}" for t in tickers]
+
+
+market = st.radio(
+    "Market", ["🇺🇸 US (SEC EDGAR)", "🇮🇳 India (NSE)"],
+    horizontal=True, label_visibility="collapsed",
+)
+
 col_input, col_btn = st.columns([4, 1])
 with col_input:
-    try:
-        options = _load_ticker_options()
-        default_idx = next((i for i, o in enumerate(options) if o.startswith("AAPL —")), 0)
+    if market.startswith("🇮🇳"):
+        options = _load_india_ticker_options()
+        default_idx = next((i for i, o in enumerate(options) if o.startswith("RELIANCE.NS —")), 0)
         selection = st.selectbox(
             "Ticker", options, index=default_idx,
             label_visibility="collapsed",
             help="Start typing a ticker or company name to search",
         )
         ticker = selection.split(" — ")[0].strip()
-    except Exception:
-        # Graceful fallback if SEC's ticker list is briefly unreachable
-        st.caption("Couldn't load the ticker list — type one manually instead.")
-        ticker = st.text_input("Ticker", value="AAPL", label_visibility="collapsed").upper()
+    else:
+        try:
+            options = _load_us_ticker_options()
+            default_idx = next((i for i, o in enumerate(options) if o.startswith("AAPL —")), 0)
+            selection = st.selectbox(
+                "Ticker", options, index=default_idx,
+                label_visibility="collapsed",
+                help="Start typing a ticker or company name to search",
+            )
+            ticker = selection.split(" — ")[0].strip()
+        except Exception:
+            # Graceful fallback if SEC's ticker list is briefly unreachable
+            st.caption("Couldn't load the ticker list — type one manually instead.")
+            ticker = st.text_input("Ticker", value="AAPL", label_visibility="collapsed").upper()
 with col_btn:
     run_btn = st.button("Run analysis", use_container_width=True)
 
@@ -242,14 +264,26 @@ if run_btn:
         prior = series[1]["value"] if len(series) > 1 else None
         return latest, prior
 
+    currency = result.get("currency", "USD")
+    currency_symbol = {"USD": "$", "INR": "\u20b9", "EUR": "\u20ac", "GBP": "\u00a3"}.get(currency, currency + " ")
+
     def fmt_usd(val):
+        """Currency-aware formatter — Indian numbering (Crore/Lakh) for INR,
+        standard B/M for USD and other currencies, since Indian financial
+        reporting conventionally uses lakh/crore rather than million/billion."""
         if val is None:
             return "—"
+        if currency == "INR":
+            if abs(val) >= 1e7:
+                return f"{currency_symbol}{val/1e7:,.1f} Cr"
+            if abs(val) >= 1e5:
+                return f"{currency_symbol}{val/1e5:,.1f} L"
+            return f"{currency_symbol}{val:,.0f}"
         if abs(val) >= 1e9:
-            return f"${val/1e9:.1f}B"
+            return f"{currency_symbol}{val/1e9:.1f}B"
         if abs(val) >= 1e6:
-            return f"${val/1e6:.1f}M"
-        return f"${val:,.0f}"
+            return f"{currency_symbol}{val/1e6:.1f}M"
+        return f"{currency_symbol}{val:,.0f}"
 
     rev_latest, rev_prior = latest_and_prior(metrics.get("revenue", []))
     ni_latest, ni_prior = latest_and_prior(metrics.get("net_income", []))
@@ -279,7 +313,7 @@ if run_btn:
     if target_val.get("available"):
         v1, v2, v3, v4 = st.columns(4)
         for col, label, value, sub in [
-            (v1, "Price", f"${target_val.get('price', '—')}" if target_val.get("price") else "—", "live quote"),
+            (v1, "Price", f"{currency_symbol}{target_val.get('price', '—')}" if target_val.get("price") else "—", "live quote"),
             (v2, "Market cap", fmt_usd(target_val.get("market_cap")), "—"),
             (v3, "P/E ratio", f"{target_val.get('pe_ratio', '—')}x" if target_val.get("pe_ratio") else "n/a", "trailing"),
             (v4, "EV/EBITDA (proxy)", f"{target_val.get('ev_ebitda_proxy', '—')}x" if target_val.get("ev_ebitda_proxy") else "n/a", "operating income proxy"),

@@ -10,7 +10,7 @@ architecture story you tell in interviews.
 from typing import TypedDict, Optional
 from langgraph.graph import StateGraph, END
 
-from data.edgar_client import get_company_profile
+from data.company_data import get_company_profile
 from data.news_client import get_recent_news
 from agents.benchmarker_agent import benchmark_against_peers, get_peers
 from agents.forecaster_agent import forecast_agent
@@ -22,6 +22,7 @@ class DDState(TypedDict, total=False):
     ticker: str
     company_name: str
     metrics: dict
+    currency: str
     filing_index_url: str
     competitor_summary: dict
     forecast_output: dict
@@ -38,6 +39,7 @@ def node_extractor(state: DDState) -> DDState:
         "company_name": profile["company_name"],
         "metrics": profile["metrics"],
         "filing_index_url": profile.get("filing_index_url", ""),
+        "currency": profile.get("currency", "USD"),
     }
 
 
@@ -73,6 +75,7 @@ def node_briefing(state: DDState) -> DDState:
         risk_output=state["risk_output"],
         forecast_output=state["forecast_output"],
         valuation_output=state.get("valuation_output", {}),
+        currency=state.get("currency", "USD"),
     )
     return {"brief": brief}
 

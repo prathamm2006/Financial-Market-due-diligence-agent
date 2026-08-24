@@ -115,7 +115,8 @@ Return JSON in exactly this shape:
 
 def briefing_agent(company_name: str, ticker: str, metrics: dict,
                     competitor_summary: dict, risk_output: dict,
-                    forecast_output: dict, valuation_output: dict) -> dict:
+                    forecast_output: dict, valuation_output: dict,
+                    currency: str = "USD") -> dict:
     """
     The synthesis agent — takes everything the other agents produced
     (including COMPUTED forecasts and live valuation multiples, not
@@ -123,6 +124,10 @@ def briefing_agent(company_name: str, ticker: str, metrics: dict,
     job here is interpretation and narrative, not arithmetic — the
     numbers it's given are already correct.
     """
+    currency_note = (
+        f"All monetary figures below are in {currency}. "
+        + ("Use Indian numbering convention (lakh/crore) where natural, e.g. 'Rs 1,234 crore' for 12,340,000,000. " if currency == "INR" else "")
+    )
     system = (
         "You are a senior equity research analyst with 15+ years of experience "
         "writing due-diligence briefs for investment committee partners. "
@@ -135,8 +140,8 @@ def briefing_agent(company_name: str, ticker: str, metrics: dict,
         "(P/E, EV/EBITDA, price/sales) — use them, cite them, but never invent "
         "numbers not given to you. A due-diligence brief that doesn't address "
         "whether the stock is cheap or expensive relative to peers is "
-        "incomplete — always weigh in on valuation explicitly. Respond with "
-        "ONLY valid JSON."
+        "incomplete — always weigh in on valuation explicitly. " + currency_note +
+        "Respond with ONLY valid JSON."
     )
     user = f"""
 Company: {company_name} ({ticker})
