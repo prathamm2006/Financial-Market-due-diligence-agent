@@ -5,6 +5,7 @@ Mirrors edgar_client.get_company_profile()'s output shape exactly, so the
 rest of the pipeline (forecaster, valuation, risk, briefing) doesn't need
 to know or care which data source a given ticker came from.
 """
+import time
 import yfinance as yf
 
 # Maps yfinance's annual-statement row labels to our internal clean metric
@@ -20,6 +21,63 @@ BALANCE_SHEET_MAP = {
     "Cash And Cash Equivalents": "cash",
     "Long Term Debt": "long_term_debt",
 }
+
+# --- Shared cache + retry layer --------------------------------------------
+# A single pipeline run can touch the same ticker from multiple agents
+# (Extractor pulls the target's financials, Benchmarker pulls each peer's,
+# Valuation pulls live quotes for target AND peers again) — without this,
+# a run with 3 peers made ~16 separate Yahoo Finance calls, which is what
+# was triggering "Too Many Requests" rate limiting. Caching per-ticker
+# results for a short window collapses that down to ~4 calls per run.
+_CACHE_TTL_SECONDS = 300
+_info_cache: dict[str, tuple[float, dict]] = {}
+_statement_cache: dict[str, tuple[float, tuple]] = {}
+
+
+def _retry_yfinance_call(fn, max_retries: int = 3):
+    """Retries a yfinance call with exponential backoff on rate-limit /
+    transient errors, rather than failing the whole pipeline on the first
+    'Too Many Requests' response."""
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except Exception as e:
+            last_error = e
+            is_transient = any(s in str(e) for s in ("Too Many Requests", "Rate limited", "429", "timeout"))
+            if is_transient and attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # 1s, 2s, 4s
+                continue
+            raise
+    raise last_error
+
+
+def get_cached_info(ticker: str) -> dict:
+    """Returns yfinance's .info dict for a ticker, cached for 5 minutes
+    and shared across every agent that needs it (extractor, benchmarker,
+    valuation) so the same ticker is fetched at most once per cache window
+    instead of once per agent."""
+    now = time.time()
+    cached = _info_cache.get(ticker)
+    if cached and (now - cached[0]) < _CACHE_TTL_SECONDS:
+        return cached[1]
+    info = _retry_yfinance_call(lambda: yf.Ticker(ticker).info)
+    _info_cache[ticker] = (now, info)
+    return info
+
+
+def get_cached_statements(ticker: str):
+    """Returns (income_stmt, balance_sheet) for a ticker, cached for 5
+    minutes for the same reason as get_cached_info."""
+    now = time.time()
+    cached = _statement_cache.get(ticker)
+    if cached and (now - cached[0]) < _CACHE_TTL_SECONDS:
+        return cached[1]
+    t = yf.Ticker(ticker)
+    income = _retry_yfinance_call(lambda: t.income_stmt)
+    balance = _retry_yfinance_call(lambda: t.balance_sheet)
+    _statement_cache[ticker] = (now, (income, balance))
+    return income, balance
 
 
 def _extract_from_statement(df, row_map: dict, years: int = 3) -> dict:
@@ -50,9 +108,9 @@ def get_company_profile_yf(ticker: str, years: int = 3) -> dict:
     Used for any ticker outside SEC's coverage — primarily NSE/BSE (.NS/.BO
     suffix) Indian listings.
     """
-    t = yf.Ticker(ticker)
+    ticker = ticker.upper()
     try:
-        info = t.info
+        info = get_cached_info(ticker)
     except Exception as e:
         raise ValueError(f"Could not reach Yahoo Finance for '{ticker}': {e}")
 
@@ -73,11 +131,9 @@ def get_company_profile_yf(ticker: str, years: int = 3) -> dict:
 
     metrics = {}
     try:
-        metrics.update(_extract_from_statement(t.income_stmt, INCOME_STMT_MAP, years))
-    except Exception:
-        pass
-    try:
-        metrics.update(_extract_from_statement(t.balance_sheet, BALANCE_SHEET_MAP, years))
+        income_stmt, balance_sheet = get_cached_statements(ticker)
+        metrics.update(_extract_from_statement(income_stmt, INCOME_STMT_MAP, years))
+        metrics.update(_extract_from_statement(balance_sheet, BALANCE_SHEET_MAP, years))
     except Exception:
         pass
 
@@ -94,7 +150,7 @@ def get_company_profile_yf(ticker: str, years: int = 3) -> dict:
     filing_index_url = f"https://www.screener.in/company/{symbol_clean}/"
 
     return {
-        "ticker": ticker.upper(),
+        "ticker": ticker,
         "cik": None,
         "company_name": company_name,
         "metrics": metrics,

@@ -10,7 +10,7 @@ answers and which was previously missing entirely.
 Deliberately NOT an LLM call: multiples are arithmetic on live prices,
 and getting that arithmetic right matters more than making it sound good.
 """
-import yfinance as yf
+from data.yfinance_client import get_cached_info
 
 
 def _safe_ratio(numerator, denominator):
@@ -28,7 +28,7 @@ def get_valuation_snapshot(ticker: str, net_income: float | None, operating_inco
     don't have two disagreeing sources of "latest earnings."
     """
     try:
-        info = yf.Ticker(ticker).info
+        info = get_cached_info(ticker)
     except Exception as e:
         return {"available": False, "reason": f"Market data lookup failed: {e}"}
 
@@ -86,7 +86,7 @@ def valuation_agent(ticker: str, metrics: dict, peer_tickers: list[str]) -> dict
         # directly (Yahoo's own trailing EPS calc) rather than our SEC figures —
         # still apples-to-apples for a "cheap vs expensive" comparison.
         try:
-            info = yf.Ticker(peer).info
+            info = get_cached_info(peer)
             peer_valuations[peer] = {
                 "pe_ratio": info.get("trailingPE"),
                 "price_to_sales": info.get("priceToSalesTrailing12Months"),
