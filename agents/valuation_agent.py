@@ -39,7 +39,7 @@ def get_valuation_snapshot(ticker: str, net_income: float | None, operating_inco
     cash = info.get("totalCash")
 
     if market_cap is None:
-        return {"available": False, "reason": "No market cap data returned — ticker may be illiquid or delisted."}
+        return {"available": False, "reason": "Live market data was not returned (usually temporary Yahoo Finance throttling - re-run in a minute; otherwise the ticker may be illiquid or delisted)."}
 
     enterprise_value = None
     if market_cap is not None and total_debt is not None and cash is not None:
