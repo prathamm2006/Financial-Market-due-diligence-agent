@@ -1,6 +1,6 @@
 # AI Due-Diligence Agent
 
-### 🔗 Live demo: https://jlrs8hvm2wcksuu3r7n2un.streamlit.app
+### 🔗 Live demo: https://due-diligence-ai-agent.streamlit.app/
 
 Pick a company, press **Run analysis**, and receive a research brief in under a minute. It covers US-listed companies (SEC EDGAR) and Indian companies on the NSE, including the Nifty 50.
 
