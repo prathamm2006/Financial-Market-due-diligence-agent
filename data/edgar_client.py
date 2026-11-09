@@ -8,9 +8,10 @@ import requests
 import time
 
 # SEC requires a real identifying User-Agent (name + email). Replace with yours.
-HEADERS = {"User-Agent": "DueDiligenceAgent research@example.com"}
+HEADERS = {"User-Agent": "Pratham Rastogi rpratham56@gmail.com"}
 
 BASE = "https://data.sec.gov"
+LONG_HISTORY_YEARS = 10  # depth kept for backtesting; the main analysis uses fewer
 TICKER_MAP_URL = "https://www.sec.gov/files/company_tickers.json"
 
 
@@ -127,7 +128,10 @@ def get_company_profile(ticker: str, years: int = 3) -> dict:
     cik = get_cik_for_ticker(ticker)
     time.sleep(0.2)  # be polite to SEC rate limits
     facts = get_company_facts(cik)
-    metrics = extract_key_metrics(facts, years=years)
+    # Extract the long history once (the backtester needs it) and trim it for
+    # the main analysis — no second download of the (large) SEC facts file.
+    metrics_long = extract_key_metrics(facts, years=max(years, LONG_HISTORY_YEARS))
+    metrics = {k: v[:years] for k, v in metrics_long.items()}
     company_name = facts.get("entityName", ticker)
     if not metrics:
         raise ValueError(
@@ -149,6 +153,7 @@ def get_company_profile(ticker: str, years: int = 3) -> dict:
         "cik": cik,
         "company_name": company_name,
         "metrics": metrics,
+        "metrics_long": metrics_long,
         "filing_index_url": filing_index_url,
     }
 

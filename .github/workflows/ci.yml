@@ -18,10 +18,13 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt pytest
 
       - name: Compile check (catches syntax errors)
-        run: python -m py_compile data/*.py agents/*.py ui/*.py orchestrator.py
+        run: python -m py_compile data/*.py agents/*.py ui/*.py evaluation/*.py orchestrator.py
+
+      - name: Test suite (offline: forecaster, backtester, full pipeline, UI)
+        run: pytest -q
 
       - name: Import check (catches missing dependencies / broken imports)
         run: |

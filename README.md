@@ -10,7 +10,7 @@ Pick a company, press **Run analysis**, and receive a research brief in under a 
 
 When an analyst at a bank or consulting firm is asked "is this company worth a closer look?", the first few hours go to gathering numbers: pulling filings, comparing competitors, checking the news, working out growth, and judging whether the share price is high or low. This project automates that first draft.
 
-Six specialised AI agents each handle one step, and the final agent writes everything up as a short brief with a recommendation. The brief can be downloaded as a PDF or Markdown file.
+Seven specialised AI agents each handle one step, and the final agent writes everything up as a short brief with a recommendation. The brief can be downloaded as a PDF or Markdown file.
 
 It is a **first-draft research aid**, not investment advice. Every brief states its own limitations.
 
@@ -60,16 +60,28 @@ It is a **first-draft research aid**, not investment advice. Every brief states 
 - **Bear / Base / Bull scenarios**: three projections instead of one. The base case follows the historical growth rate; the bear and bull cases lower and raise that rate by 50% of its size (with a small minimum gap), so the range shows how uncertain the forecast really is.
 - **Confidence level**: an honest label (low or moderate) attached to every forecast. Short histories and volatile results are marked low.
 
-### The six agents
+### Testing the forecast
+
+- **Backtesting**: checking a forecasting method by pretending to be in the past. The system forecasts year *T+1* using only data up to year *T*, then compares the forecast with what the company really reported. Repeating this over many past years shows how accurate the method has actually been.
+- **Walk-forward**: the backtesting style used here, where the "present" moves forward one year at a time so each forecast only ever sees its own past.
+- **Look-ahead bias**: the classic backtesting mistake of letting a forecast peek at information from after the date it is supposed to be forecasting from. The system is tested to make sure this cannot happen.
+- **Naive baseline**: a deliberately simple guess a forecast must beat to be worth anything. Here: "next year equals this year" and "next year grows like last year did".
+- **Median error**: the typical size of a miss, as a share of the actual figure. The median is used so one unusual year does not distort it.
+- **Beat no-change rate**: how often the forecast was closer to reality than the "next year equals this year" guess. Below 50% means the forecast adds nothing.
+- **Band coverage**: how often the actual result landed inside the bear-to-bull range. If it rarely does, the range is too narrow to be honest.
+- **Restatement**: when a company later revises figures it already published. Backtests use today's figures for past years, which can make past accuracy look slightly better than it truly was.
+
+### The seven agents
 
 1. **Extractor**: pulls the company's reported financials from SEC EDGAR (US) or Yahoo Finance (India).
 2. **Benchmarker**: compares the company's revenue, profit and margin with named competitors.
 3. **Forecaster**: calculates CAGR and the bear, base and bull projections. This is plain arithmetic, not an LLM.
-4. **Valuation agent**: pulls live market data and calculates P/E, EV/EBITDA and price/sales for the company and its peers, to judge whether it looks cheap or expensive.
-5. **Risk Flagger**: reads recent news and the financial trends and lists concrete, evidence-based risks. This agent uses the LLM.
-6. **Briefing agent**: combines everything into the final brief with a recommendation. This agent uses the LLM.
+4. **Backtester**: re-runs the Forecaster on the company's own past years and scores it against what actually happened and against simple baselines, so the brief can say how much to trust the forecast. This is plain arithmetic, not an LLM.
+5. **Valuation agent**: pulls live market data and calculates P/E, EV/EBITDA and price/sales for the company and its peers, to judge whether it looks cheap or expensive.
+6. **Risk Flagger**: reads recent news and the financial trends and lists concrete, evidence-based risks. This agent uses the LLM.
+7. **Briefing agent**: combines everything into the final brief with a recommendation. This agent uses the LLM.
 
-Only agents 5 and 6 use the language model. Everything numerical is calculated by code.
+Only agents 6 and 7 use the language model. Everything numerical is calculated by code.
 
 ### Reliability terms
 
@@ -92,7 +104,8 @@ Only agents 5 and 6 use the language model. Everything numerical is calculated b
 ## Known limitations
 
 - **A first draft, not advice.** The brief is meant to speed up research and should be checked against the filings before any decision.
-- **Forecasts are simple.** They extend past trends and do not model the economy, competition or company-specific events.
+- **Forecasts are simple.** They extend past trends and do not model the economy, competition or company-specific events. The built-in track record exists precisely to show how far to trust them.
+- **The track record needs long history.** US companies provide about ten years of data, enough for a meaningful check. Free Yahoo Finance data for Indian companies covers only about four years, so the check is skipped for them and the app says so.
 - **Free data has limits.** Yahoo Finance and the free AI tier can slow or refuse requests at busy times. Waiting a minute and running the analysis again usually resolves it.
 - **The Indian company list is a snapshot.** Unlike the US list, which is fetched live from the SEC, the Indian list is maintained by hand, and companies occasionally change their ticker (Zomato became Eternal, symbol `ETERNAL.NS`, in 2025).
 - **EV/EBITDA is approximate.** It uses operating income in place of true EBITDA.

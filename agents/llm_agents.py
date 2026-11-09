@@ -116,7 +116,7 @@ Return JSON in exactly this shape:
 def briefing_agent(company_name: str, ticker: str, metrics: dict,
                     competitor_summary: dict, risk_output: dict,
                     forecast_output: dict, valuation_output: dict,
-                    currency: str = "USD") -> dict:
+                    currency: str = "USD", backtest_context: dict | None = None) -> dict:
     """
     The synthesis agent — takes everything the other agents produced
     (including COMPUTED forecasts and live valuation multiples, not
@@ -154,6 +154,11 @@ scenario projections, already calculated — cite these directly, do not
 recompute):
 {json.dumps(forecast_output, indent=2)}
 
+Forecast track record (the same forecasting method, back-tested on this
+company's own past years against what actually happened — computed, cite
+only these figures; if "available" is false, do not mention a track record):
+{json.dumps(backtest_context or {"available": False}, indent=2)}
+
 Live valuation multiples (target vs peers, already calculated from live
 market data — cite directly):
 {json.dumps(valuation_output, indent=2)}
@@ -168,7 +173,7 @@ Return JSON in exactly this shape:
 {{
   "headline": "one sharp sentence verdict, e.g. 'Steady grower trading at a premium — proceed with valuation discipline'",
   "financial_summary": "3-4 sentences citing exact revenue/net income figures and YoY or CAGR growth rates from the data given",
-  "forecast_analysis": "2-3 sentences interpreting the computed CAGR and bull/base/bear scenario range — explicitly mention the spread between bear and bull cases and the stated confidence level",
+  "forecast_analysis": "2-3 sentences interpreting the computed CAGR and bull/base/bear scenario range — explicitly mention the spread between bear and bull cases and the stated confidence level; if a forecast track record is available, also state in one sentence how this method has historically performed (use the given headline figures and mention if the verdict is worse_than_naive or the sample is small), and let that temper how much weight the forecast deserves",
   "valuation_analysis": "2-3 sentences stating whether the stock looks cheap or expensive vs peers, citing the specific P/E, EV/EBITDA, or price/sales figures given — if valuation data is unavailable, say so explicitly rather than skipping this",
   "competitive_position": "2-3 sentences vs the named competitors, citing specific margin/revenue comparisons from the data",
   "key_risks": ["short bullet citing a specific figure or event", "short bullet citing a specific figure or event"],

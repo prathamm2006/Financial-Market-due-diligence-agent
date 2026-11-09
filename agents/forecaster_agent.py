@@ -10,7 +10,10 @@ import statistics
 
 def _cagr(start_value: float, end_value: float, periods: int) -> float | None:
     """Compound Annual Growth Rate between two points, `periods` years apart."""
-    if start_value is None or end_value is None or start_value <= 0 or periods <= 0:
+    # Both ends must be positive: a fractional power of a negative ratio
+    # (profit turning into a loss) yields a complex number, not a growth rate.
+    if (start_value is None or end_value is None
+            or start_value <= 0 or end_value <= 0 or periods <= 0):
         return None
     return (end_value / start_value) ** (1 / periods) - 1
 
@@ -106,7 +109,8 @@ def forecast_metric(series: list[dict], years_ahead: int = 2) -> dict:
     # Confidence is honest, not decorative: short history or wildly volatile
     # trends get flagged, not silently smoothed over.
     values = [pt["value"] for pt in chrono]
-    volatility = statistics.pstdev(values) / statistics.mean(values) if statistics.mean(values) else None
+    mean_abs = abs(statistics.mean(values))
+    volatility = statistics.pstdev(values) / mean_abs if mean_abs else None
     if len(chrono) < 3:
         confidence = "low"
     elif volatility is not None and volatility > 0.25:

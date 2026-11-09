@@ -102,10 +102,10 @@ class _ReportPDF(FPDF):
     def header(self):
         self.set_font("Helvetica", "B", 14)
         self.set_text_color(20, 20, 20)
-        self.cell(0, 10, _sanitize_pdf_text(self.title_text), ln=True)
+        self.cell(0, 10, _sanitize_pdf_text(self.title_text), new_x="LMARGIN", new_y="NEXT")
         self.set_font("Helvetica", "", 9)
         self.set_text_color(120, 120, 120)
-        self.cell(0, 6, _sanitize_pdf_text(self.subtitle_text), ln=True)
+        self.cell(0, 6, _sanitize_pdf_text(self.subtitle_text), new_x="LMARGIN", new_y="NEXT")
         self.ln(4)
         self.set_draw_color(200, 200, 200)
         self.line(10, self.get_y(), 200, self.get_y())
@@ -114,7 +114,7 @@ class _ReportPDF(FPDF):
     def section(self, heading: str, body: str):
         self.set_font("Helvetica", "B", 11)
         self.set_text_color(180, 130, 40)
-        self.cell(0, 8, _sanitize_pdf_text(heading.upper()), ln=True)
+        self.cell(0, 8, _sanitize_pdf_text(heading.upper()), new_x="LMARGIN", new_y="NEXT")
         self.set_font("Helvetica", "", 10)
         self.set_text_color(30, 30, 30)
         self.multi_cell(0, 5.5, _sanitize_pdf_text(body))

@@ -22,6 +22,8 @@ BALANCE_SHEET_MAP = {
     "Long Term Debt": "long_term_debt",
 }
 
+LONG_HISTORY_YEARS = 10  # depth kept for backtesting (Yahoo supplies only ~4)
+
 # Exchange suffixes whose home currency we know even if Yahoo's reply is
 # empty — prevents an Indian stock being mislabeled as USD.
 _SUFFIX_CURRENCY = {".NS": "INR", ".BO": "INR"}
@@ -185,13 +187,15 @@ def get_company_profile_yf(ticker: str, years: int = 3) -> dict:
     except Exception:
         info = {}  # keep going: the statements may still load
 
-    metrics: dict = {}
+    metrics_long: dict = {}
     try:
         income_stmt, balance_sheet = get_cached_statements(ticker)
-        metrics.update(_extract_from_statement(income_stmt, INCOME_STMT_MAP, years))
-        metrics.update(_extract_from_statement(balance_sheet, BALANCE_SHEET_MAP, years))
+        depth = max(years, LONG_HISTORY_YEARS)
+        metrics_long.update(_extract_from_statement(income_stmt, INCOME_STMT_MAP, depth))
+        metrics_long.update(_extract_from_statement(balance_sheet, BALANCE_SHEET_MAP, depth))
     except Exception:
         pass
+    metrics = {k: v[:years] for k, v in metrics_long.items()}
 
     if not metrics:
         if _info_is_valid(info):
@@ -225,6 +229,7 @@ def get_company_profile_yf(ticker: str, years: int = 3) -> dict:
         "cik": None,
         "company_name": company_name,
         "metrics": metrics,
+        "metrics_long": metrics_long,
         "filing_index_url": filing_index_url,
         "currency": currency,
     }

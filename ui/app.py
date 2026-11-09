@@ -195,6 +195,7 @@ def run_with_progress(ticker: str):
         "Pulling SEC EDGAR filings",
         "Benchmarking against peers",
         "Computing trend forecasts",
+        "Back-testing the forecast on past years",
         "Pulling live valuation multiples",
         "Scanning for risk signals",
         "Synthesizing executive brief",
@@ -235,6 +236,7 @@ if run_btn:
     metrics = result.get("metrics", {})
     forecast = result.get("forecast_output", {})
     valuation = result.get("valuation_output", {})
+    backtest = result.get("backtest_output", {})
     filing_url = result.get("filing_index_url", "")
 
     if "error" in brief:
@@ -376,6 +378,49 @@ if run_btn:
         st.markdown(f"<span class='confidence-tag'>forecast confidence: {conf}</span>", unsafe_allow_html=True)
     else:
         st.caption("No multi-year revenue history available from SEC EDGAR for this ticker.")
+
+    # -- Forecast track record (backtest) ------------------------------------
+    st.markdown("<div class='section-label'>Forecast track record</div>", unsafe_allow_html=True)
+    if backtest.get("available"):
+        bt_rev = backtest["summary"].get("revenue", {})
+        verdict_text = {
+            "beats_naive": ("risk-low", "beats a no-change guess"),
+            "comparable": ("risk-medium", "about as good as a no-change guess"),
+            "worse_than_naive": ("risk-high", "worse than a no-change guess"),
+            "insufficient_sample": ("risk-medium", "too few checks to judge"),
+        }.get(bt_rev.get("verdict"), ("risk-medium", "unclear"))
+        st.markdown(
+            f"<span class='risk-pill {verdict_text[0]}'>{verdict_text[1]}</span>"
+            + (" <span class='confidence-tag'>small sample: indicative only</span>" if bt_rev.get("small_sample") else ""),
+            unsafe_allow_html=True,
+        )
+        st.write(bt_rev.get("headline") or "")
+        with st.expander("Back-test detail (how the forecast method scored on this company)"):
+            method_names = {
+                "base_cagr": "Base case (CAGR growth)",
+                "linear_trend": "Linear trend",
+                "naive_no_change": "Naive: no change",
+                "naive_last_growth": "Naive: repeat last year's growth",
+            }
+            def _pct(v):
+                return f"{v:.1%}" if v is not None else "n/a"
+            table = []
+            for key, label in method_names.items():
+                m = bt_rev.get("methods", {}).get(key)
+                if m:
+                    table.append({
+                        "Method": label,
+                        "Checks": m["n"],
+                        "Median error": _pct(m["median_ape"]),
+                        "Beat no-change": _pct(m["beats_no_change_pct"]),
+                        "Right direction": _pct(m["directional_accuracy"]),
+                        "Inside bear-bull range": _pct(m["band_coverage"]),
+                    })
+            st.table(table)
+            st.caption("Revenue, scored over " + str(backtest.get("years_of_history", "?")) + " years of history. "
+                       + " ".join(backtest.get("notes", [])))
+    else:
+        st.caption(backtest.get("reason") or "Forecast back-test unavailable for this company.")
 
     # -- Narrative sections -------------------------------------------------
     left, right = st.columns(2)
