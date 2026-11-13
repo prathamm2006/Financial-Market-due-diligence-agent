@@ -27,7 +27,12 @@ def _get_secret(key: str) -> str | None:
 
 
 MODEL = "gemini-2.5-flash"
+# Pinned explicitly: newer google-genai releases (3.x) silently switched their
+# default API version to "v1", which rejects system prompts ("Developer
+# instruction is not enabled for api version v1"). Never rely on the default.
+API_VERSION = "v1beta"
 _client = None
+_system_instruction_ok = True  # flips to False if the API ever refuses system prompts
 
 
 def _get_client():
@@ -43,8 +48,37 @@ def _get_client():
                 "https://aistudio.google.com/apikey and export it, e.g.\n"
                 '  export GOOGLE_API_KEY="your-key-here"'
             )
-        _client = genai.Client(api_key=api_key)
+        _client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(api_version=API_VERSION),
+        )
     return _client
+
+
+def _generate(system: str, user: str):
+    """One Gemini call. Normally the role instructions go in the dedicated
+    system prompt. If the API refuses system prompts (the 'Developer
+    instruction is not enabled' error), fold them into the message instead
+    and remember that for later calls, so a change on Google's side degrades
+    gracefully instead of breaking the app."""
+    global _system_instruction_ok
+    config = {"response_mime_type": "application/json"}
+    contents = user
+    if _system_instruction_ok:
+        config["system_instruction"] = system
+    else:
+        contents = f"{system}\n\n{user}"
+    try:
+        return _get_client().models.generate_content(
+            model=MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(**config),
+        )
+    except Exception as e:
+        if _system_instruction_ok and "Developer instruction is not enabled" in str(e):
+            _system_instruction_ok = False
+            return _generate(system, user)
+        raise
 
 
 def _call_gemini_json(system: str, user: str, max_retries: int = 3) -> dict:
@@ -58,14 +92,7 @@ def _call_gemini_json(system: str, user: str, max_retries: int = 3) -> dict:
     last_error = None
     for attempt in range(max_retries):
         try:
-            resp = _get_client().models.generate_content(
-                model=MODEL,
-                contents=user,
-                config=types.GenerateContentConfig(
-                    system_instruction=system,
-                    response_mime_type="application/json",
-                ),
-            )
+            resp = _generate(system, user)
             text = resp.text.strip()
             try:
                 return json.loads(text)
